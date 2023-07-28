@@ -1,14 +1,15 @@
 use std::{
     net::{TcpListener, TcpStream},
     thread::sleep,
-    time::{Duration, Instant}, io::{Write, Read},
+    time::{Duration, Instant},
 };
 
-use byteorder::{WriteBytesExt, ReadBytesExt, BigEndian};
-use game::{commands::{Command, Handshake, TimedCommand}, Game, Player, RollbackableGame};
+use game::{
+    commands::{Command, Handshake, TimedCommand},
+    Game, Player, RollbackableGame,
+};
 use network::net_thread;
 use sdl2::keyboard::Keycode;
-use alkahest::{Serialize, serialize_to_vec, Deserialize, deserialize};
 
 mod game;
 mod network;
@@ -60,13 +61,15 @@ fn generate_move_command(key_state: &KeyState) -> Command {
 }
 
 fn format_usage_message(program_name: &str) -> String {
-    format!("Usage: {} [player name] [(host [port]|(client [ip] [port])]", program_name)
+    format!(
+        "Usage: {} [player name] [(host [port]|(client [ip] [port])]",
+        program_name
+    )
 }
 fn print_usage_and_quit(program_name: &str) -> ! {
     println!("{}", format_usage_message(program_name));
     std::process::exit(-1);
 }
-
 
 fn main() {
     let mut arguments = std::env::args().into_iter();
@@ -75,15 +78,15 @@ fn main() {
         .expect("Expected program name to be passed as first argument");
     let my_name = arguments
         .next()
-        .unwrap_or_else(||print_usage_and_quit(&program_name));
+        .unwrap_or_else(|| print_usage_and_quit(&program_name));
     let host_or_client = arguments
         .next()
-        .unwrap_or_else(||print_usage_and_quit(&program_name));
-    let mut connection: TcpStream = match host_or_client.as_str() {
+        .unwrap_or_else(|| print_usage_and_quit(&program_name));
+    let connection: TcpStream = match host_or_client.as_str() {
         "host" => {
             let port = arguments
                 .next()
-                .unwrap_or_else(||print_usage_and_quit(&program_name));
+                .unwrap_or_else(|| print_usage_and_quit(&program_name));
             let tcp_listener = TcpListener::bind(format!("0.0.0.0:{}", port))
                 .expect(&format!("Unable to bind to port {}", port));
             let (client, _) = tcp_listener.accept().expect("Unable to accept client");
@@ -92,10 +95,10 @@ fn main() {
         "client" => {
             let ip = arguments
                 .next()
-                .unwrap_or_else(||print_usage_and_quit(&program_name));
+                .unwrap_or_else(|| print_usage_and_quit(&program_name));
             let port = arguments
                 .next()
-                .unwrap_or_else(||print_usage_and_quit(&program_name));
+                .unwrap_or_else(|| print_usage_and_quit(&program_name));
             let address = format!("{}:{}", ip, port);
             let host =
                 TcpStream::connect(&address).expect(&format!("Could not connect to {}", address));
@@ -107,11 +110,26 @@ fn main() {
         }
     };
 
-    let (to_other_sender, from_other_receiver) = net_thread(connection);
+    let (their_handshake, to_other_sender, from_other_receiver) =
+        net_thread(my_name.clone(), connection);
 
     let mut starting_game = Game::new();
-    let player_1_id = Player::new(&mut starting_game, 200.0, 100.0);
-    let player_2_id = Player::new(&mut starting_game, 100.0, 100.0);
+    let player_ids = vec![
+        Player::new(&mut starting_game, 100.0, 100.0),
+        Player::new(&mut starting_game, 200.0, 100.0),
+    ];
+    if their_handshake.my_name == my_name {
+        panic!("Both players cannot have the same name!");
+    }
+    let (my_id, their_id) = if their_handshake.my_name < my_name {
+        let my_id = player_ids[0];
+        let their_id = player_ids[1];
+        (my_id, their_id)
+    } else {
+        let my_id = player_ids[1];
+        let their_id = player_ids[0];
+        (my_id, their_id)
+    };
     let mut game = RollbackableGame::new(starting_game);
 
     let sdl2_system = sdl2::init().expect("Couldn't initialise SDL");
@@ -212,12 +230,13 @@ fn main() {
                 time,
                 command: command.clone(),
             };
-            to_other_sender.send(timed_command).expect("Couldn't send command to other player");
-            game.add_command(player_1_id, command, time);
-            
+            to_other_sender
+                .send(timed_command)
+                .expect("Couldn't send command to other player");
+            game.add_command(my_id, command, time);
         }
         for timed_command in from_other_receiver.try_iter() {
-            game.add_command(player_2_id, timed_command.command, timed_command.time);
+            game.add_command(their_id, timed_command.command, timed_command.time);
         }
         game.draw(&mut canvas);
         game.step();

@@ -1,12 +1,10 @@
 use super::*;
 use alkahest::alkahest;
 
-
-
 #[derive(Clone, Debug)]
 #[alkahest(Formula, SerializeRef, Deserialize)]
 pub struct Handshake {
-    pub my_name: String
+    pub my_name: String,
 }
 #[derive(Clone, Debug)]
 #[alkahest(Formula, SerializeRef, Deserialize)]
