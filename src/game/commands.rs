@@ -8,6 +8,16 @@ pub struct Handshake {
 }
 #[derive(Clone, Debug)]
 #[alkahest(Formula, SerializeRef, Deserialize)]
+pub struct TimingPacket {
+    pub sequence_number: u64,
+}
+#[derive(Clone, Debug)]
+#[alkahest(Formula, SerializeRef, Deserialize)]
+pub struct SetInputDelay {
+    pub input_delay: u64,
+}
+#[derive(Clone, Debug)]
+#[alkahest(Formula, SerializeRef, Deserialize)]
 pub enum Command {
     MoveByCommand(f64, f64),
 }

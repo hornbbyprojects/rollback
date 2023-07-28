@@ -5,14 +5,14 @@ use std::{
 };
 
 use game::{
-    commands::{Command, Handshake, TimedCommand},
+    commands::{Command, TimedCommand},
     Game, Player, RollbackableGame,
 };
-use network::net_thread;
 use sdl2::keyboard::Keycode;
 
 mod game;
 mod network;
+use network::net_thread;
 
 const WINDOW_WIDTH: u32 = 400;
 const WINDOW_HEIGHT: u32 = 400;
@@ -82,7 +82,7 @@ fn main() {
     let host_or_client = arguments
         .next()
         .unwrap_or_else(|| print_usage_and_quit(&program_name));
-    let connection: TcpStream = match host_or_client.as_str() {
+    let (is_host, connection) = match host_or_client.as_str() {
         "host" => {
             let port = arguments
                 .next()
@@ -90,7 +90,7 @@ fn main() {
             let tcp_listener = TcpListener::bind(format!("0.0.0.0:{}", port))
                 .expect(&format!("Unable to bind to port {}", port));
             let (client, _) = tcp_listener.accept().expect("Unable to accept client");
-            client
+            (true, client)
         }
         "client" => {
             let ip = arguments
@@ -102,7 +102,7 @@ fn main() {
             let address = format!("{}:{}", ip, port);
             let host =
                 TcpStream::connect(&address).expect(&format!("Could not connect to {}", address));
-            host
+            (false, host)
         }
         other_string => {
             println!("{}", format_usage_message(&program_name));
@@ -110,8 +110,8 @@ fn main() {
         }
     };
 
-    let (their_handshake, to_other_sender, from_other_receiver) =
-        net_thread(my_name.clone(), connection);
+    let (their_handshake, set_input_delay, to_other_sender, from_other_receiver) =
+        net_thread(is_host, my_name.clone(), connection);
 
     let mut starting_game = Game::new();
     let player_ids = vec![
@@ -224,8 +224,7 @@ fn main() {
         }
         if moved {
             let command = generate_move_command(&key_state);
-            let input_delay = 50;
-            let time = game.current_time + input_delay;
+            let time = game.current_time + set_input_delay.input_delay;
             let timed_command = TimedCommand {
                 time,
                 command: command.clone(),
@@ -236,6 +235,9 @@ fn main() {
             game.add_command(my_id, command, time);
         }
         for timed_command in from_other_receiver.try_iter() {
+            if timed_command.time < game.current_time {
+                println!("WARNING! Received command too late");
+            }
             game.add_command(their_id, timed_command.command, timed_command.time);
         }
         game.draw(&mut canvas);
