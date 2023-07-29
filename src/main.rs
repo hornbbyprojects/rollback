@@ -235,10 +235,14 @@ fn main() {
             game.add_command(my_id, command, time);
         }
         for timed_command in from_other_receiver.try_iter() {
-            if timed_command.time < game.current_time {
-                println!("WARNING! Received command too late");
-            }
             game.add_command(their_id, timed_command.command, timed_command.time);
+            if timed_command.time < game.current_time {
+                let until = game.current_time;
+                game.current_time = timed_command.time;
+                while game.current_time < until {
+                    game.step();
+                }
+            }
         }
         game.draw(&mut canvas);
         game.step();
