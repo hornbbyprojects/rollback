@@ -5,8 +5,9 @@ use std::{
 };
 
 use game::{
+    characters::Minkle,
     commands::{Command, TimedCommand},
-    Game, Player, RollbackableGame,
+    Game, Player, RollbackableGame, convert_coords_from_sdl_coords, Position,
 };
 use sdl2::keyboard::Keycode;
 
@@ -34,6 +35,9 @@ impl KeyState {
     }
 }
 const PLAYER_SPEED: f64 = 4.0;
+const PLAYER_JUMP_SPEED: f64 = 20.0;
+const PLAYER_FLOAT_SPEED: f64 = 2.0;
+const PLAYER_FASTFALL_SPEED: f64 = 4.0;
 fn generate_move_command(key_state: &KeyState) -> Command {
     let dx = if key_state.left {
         if key_state.right {
@@ -50,10 +54,10 @@ fn generate_move_command(key_state: &KeyState) -> Command {
         if key_state.up {
             0.0
         } else {
-            PLAYER_SPEED
+            -PLAYER_FASTFALL_SPEED
         }
     } else if key_state.up {
-        -PLAYER_SPEED
+        PLAYER_FLOAT_SPEED
     } else {
         0.0
     };
@@ -118,6 +122,7 @@ fn main() {
         Player::new(&mut starting_game, 100.0, 100.0),
         Player::new(&mut starting_game, 200.0, 100.0),
     ];
+    Minkle::new(&mut starting_game, player_ids[0]);
     if their_handshake.my_name == my_name {
         panic!("Both players cannot have the same name!");
     }
@@ -154,6 +159,7 @@ fn main() {
     'main: loop {
         let tick_start = Instant::now();
         let mut moved = false;
+        let mut new_commands = Vec::new();
         for event in event_pump.poll_iter() {
             match event {
                 sdl2::event::Event::Quit { .. } => break 'main,
@@ -183,6 +189,20 @@ fn main() {
                     }
                     _ => {}
                 },
+                sdl2::event::Event::MouseButtonDown {
+                    timestamp: _,
+                    window_id: _,
+                    which: _,
+                    mouse_btn: _,
+                    clicks: _,
+                    x,
+                    y,
+                } => {
+                    let Position {x: gx, y: gy} = convert_coords_from_sdl_coords(x, y);
+                    let command =
+                        Command::AbilityCommand(game::commands::AbilityId(0), gx, gy);
+                    new_commands.push(command);
+                }
                 sdl2::event::Event::KeyUp {
                     timestamp: _,
                     window_id: _,
@@ -224,6 +244,9 @@ fn main() {
         }
         if moved {
             let command = generate_move_command(&key_state);
+            new_commands.push(command);
+        }
+        for command in new_commands {
             let time = game.current_time + set_input_delay.input_delay;
             let timed_command = TimedCommand {
                 time,
